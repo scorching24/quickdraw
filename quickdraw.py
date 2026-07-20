@@ -3,6 +3,9 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import math
+import time
+import random
+from game_logic import PlayerState, resolve_round
 
 base_options = python.BaseOptions(model_asset_path="hand_landmarker.task")
 options = vision.HandLandmarkerOptions(
@@ -24,6 +27,10 @@ HAND_CONNECTIONS = [
 FINGER_TIPS = [8, 12, 16, 20]
 FINGER_PIPS = [6, 10, 14, 18]
 
+VALID_MOVES = ["reload", "shoot", "sheath", "slash", "shield", "deflect"]
+
+def random_ai_move():
+    return random.choice(VALID_MOVES)
 
 def fingers_up_pattern(lm):
     return [lm[t].y < lm[p].y for t, p in zip(FINGER_TIPS, FINGER_PIPS)]
@@ -122,6 +129,15 @@ def draw_hand(frame, hand_landmarks):
 cap = cv2.VideoCapture(0)
 frame_timestamp_ms = 0
 
+current_action = None
+round_start_time = time.time()
+ROUND_LENGTH = 3.0
+
+p1 = PlayerState("you")
+p2 = PlayerState("ai")
+last_result_text = ""
+match_over = False
+
 while True:
     success, frame = cap.read()
     if not success:
@@ -140,13 +156,45 @@ while True:
             draw_hand(frame, hand_landmarks)
 
         labels = [h[0].category_name for h in result.handedness]
-        action = classify_action(result.hand_landmarks, labels)
+        detected = classify_action(result.hand_landmarks, labels)
 
-        if action:
-            cv2.putText(frame, action, (30, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 0), 3)
+        if detected:
+            current_action = detected
+    
+    elapsed = time.time() - round_start_time
+    time_left = max(0, ROUND_LENGTH - elapsed)
 
-    cv2.imshow("rps game", frame)
+    if elapsed >= ROUND_LENGTH and not match_over:
+        p1_move = current_action or "reload"
+        p2_move = random_ai_move()
+        outcome = resolve_round(p1, p1_move, p2, p2_move)
+
+        last_result_text = f"you: {p1_move} | ai: {p2_move} -> {outcome}"
+        print(last_result_text)
+
+        current_action = None
+        round_start_time = time.time()
+
+        if outcome == "round_tie":
+            last_result_text += "[ROUND VETO]"
+        elif p1.round_wins >= 3:
+            match_over = True
+            last_result_text = "[WIN]"
+        elif p2.round_wins >= 3:
+            match_over = True
+            last_result_text = "[LOSS]"
+
+
+    cv2.putText(frame, f"move: {current_action or '...'}", (30, 50),
+                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
+    cv2.putText(frame, f"time left: {time_left:.1f}", (30, 90),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+    cv2.putText(frame, f"score: [you] {p1.round_wins} [ai] {p2.round_wins}", (30, 130),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+    cv2.putText(frame, last_result_text, (30, 460),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 0), 2)
+
+    cv2.imshow("quickdraw", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
