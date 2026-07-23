@@ -27,7 +27,102 @@ HAND_CONNECTIONS = [
 FINGER_TIPS = [8, 12, 16, 20]
 FINGER_PIPS = [6, 10, 14, 18]
 
+FINGER_COLORS = {
+    "thumb" : (48, 90, 216),
+    "index": (23, 117, 186),
+    "middle": (17, 109, 59),
+    "ring": (165, 95, 24),
+    "pinky": (183, 74, 83),
+}
+
+LANDMARK_GROUP = (
+    ["wrist"] +
+    ["thumb"] * 4 +
+    ["index"] * 4 +
+    ["middle"] * 4 +
+    ["ring"] * 4 +
+    ["pinky"] * 4
+)
+
 VALID_MOVES = ["reload", "shoot", "sheath", "slash", "shield", "deflect"]
+
+GUN_ICON = [
+    "..............................",
+    "........#.................#...",
+    "...#######################....",
+    "...#######################....",
+    "...#######################....",
+    "...#######################....",
+    "...#################..........",
+    "...#############..............",
+    "...#####....####..............",
+    "...#####...#...#..............",
+    "...#####...#...#..............",
+    "...#####....###...............",
+    "....#####.....................",
+    "....#####.....................",
+    ".....#####....................",
+    ".....#####....................",
+    "......#####...................",
+    "......#####...................",
+]
+
+SWORD_ICON = [
+    "........#........",
+    ".......###.......",
+    ".......###.......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    "......#####......",
+    ".....#######.....",
+    "....#########....",
+    "#################",
+    ".###############.",
+    ".......###.......",
+    ".......###.......",
+    ".......###.......",
+    ".......###.......",
+    "......#####......",
+    "......#####......",
+    ".......###.......",
+]
+
+def draw_pixel_icon(frame, pattern, x, y, color, block = 4):
+    for row_idx, row in enumerate(pattern):
+        for col_idx, cell in enumerate(row):
+            if cell == '#':
+                px = x + col_idx * block
+                py = y + row_idx * block
+                cv2.rectangle(frame, (px, py), (px + block, py + block), color, -1)
+
+def draw_hud_panel(frame, x, y, w, h):
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x, y), (x + w, y + h), (25, 25, 25), -1)
+    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+    cv2.rectangle(frame, (x, y), (x + w, y+ h), (90, 90, 90), 1)
+
+def draw_weapon_status(frame, player, label, x, y):
+    panel_w, panel_h = 170, 110
+    draw_hud_panel(frame, x, y, panel_w, panel_h)
+
+    cv2.putText(frame, label, (x + 10, y + 22),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    
+    gun_color = (0, 220, 0) if player.gun_loaded else (90, 90, 90)
+    sword_color = (0, 220, 0) if player.sword_sheathed else (90, 90, 90)
+
+    draw_pixel_icon(frame, GUN_ICON, x + 15, y + 35, gun_color, block=3)
+    draw_pixel_icon(frame, SWORD_ICON, x + 110, y + 25, sword_color, block=3)
 
 def random_ai_move():
     return random.choice(VALID_MOVES)
@@ -122,9 +217,13 @@ def draw_hand(frame, hand_landmarks):
     points = [(int(lm.x * w), int(lm.y * h)) for lm in hand_landmarks]
 
     for start, end in HAND_CONNECTIONS:
-        cv2.line(frame, points[start], points[end], (0, 255, 0), 2)
-    for x, y in points:
-        cv2.circle(frame, (x, y), 5, (0, 0, 255), -1)
+        group = LANDMARK_GROUP[end]
+        color = FINGER_COLORS.get(group, (200, 200, 200))
+        cv2.line(frame, points[start], points[end], color, 2)
+    for i, (x, y) in enumerate(points):
+        group = LANDMARK_GROUP[i]
+        color = FINGER_COLORS.get(group, (255, 255, 255))
+        cv2.circle(frame, (x, y), 5, color, -1)
 
 cap = cv2.VideoCapture(0)
 frame_timestamp_ms = 0
@@ -193,6 +292,10 @@ while True:
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     cv2.putText(frame, last_result_text, (30, 460),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 0), 2)
+
+    draw_weapon_status(frame, p1, "you", 30, 170)
+    h, w = frame.shape[:2]
+    draw_weapon_status(frame, p2, "ai", w - 200, 170)
 
     cv2.imshow("quickdraw", frame)
 
